@@ -74,7 +74,7 @@ def generate_shopping_list(root):
             meal_plan_title = meal_plan_data[0]  # Get the meal plan title
             recipe_ids = meal_plan_data[1].split(', ')  # Split comma-separated recipe IDs
             
-            shopping_list = {}
+            shopping_list = []
             recipe_titles = []
 
             # Fetch recipe names and ingredients
@@ -84,12 +84,10 @@ def generate_shopping_list(root):
                 if recipe_data:
                     recipe_name = recipe_data[0]
                     recipe_titles.append(recipe_name)  # Add recipe name to recipe titles
-                    ingredients = recipe_data[1].split(', ')  # Split comma-separated ingredients
+                    ingredients = recipe_data[1].split('\n')  # Split ingredients into individual lines
                     for ingredient in ingredients:
-                        if ingredient in shopping_list:
-                            shopping_list[ingredient].append(recipe_name)
-                        else:
-                            shopping_list[ingredient] = [recipe_name]
+                        if ingredient.strip():  # Skip empty lines
+                            shopping_list.append(f"{ingredient.strip()} ({recipe_name})")
             
             # Write shopping list to a text file
             with open("shopping_list.txt", "w") as file:
@@ -98,8 +96,8 @@ def generate_shopping_list(root):
                 for recipe in recipe_titles:
                     file.write(f"- {recipe}\n")
                 file.write("\nShopping List:\n")
-                for ingredient, recipes in shopping_list.items():
-                    file.write(f"- {ingredient} ({', '.join(recipes)})\n")
+                for item in shopping_list:
+                    file.write(f"{item}\n")
             
             messagebox.showinfo("Success", "Shopping list generated successfully!")
             select_meal_plan_window.destroy()  # Close the window after success
@@ -130,3 +128,4 @@ def generate_shopping_list(root):
 
     # Button to generate the shopping list
     tk.Button(select_meal_plan_window, text="Generate Shopping List", command=lambda: save_shopping_list(selected_meal_plan.get())).pack(pady=10)
+    

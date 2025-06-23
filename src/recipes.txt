@@ -1,5 +1,5 @@
-Spaghetti Bolognese|Spaghetti; Ground Beef; Tomato Sauce; Garlic; Onion
-Chicken Curry|Chicken; Curry Powder; Coconut Milk; Garlic; Ginger
-Vegetable Stir Fry|Broccoli; Carrot; Bell Pepper; Soy Sauce; Garlic
-Beef Stew|Beef; Potato; Carrot; Onion; Beef Stock
-Pancakes|Flour; Milk; Egg; Sugar; Butter
+Spaghetti Bolognese 23|Spaghetti; Ground Beef; Tomato Sauce; Garlic; Onion
+Chicken Curry 23|Chicken; Curry Powder; Coconut Milk; Garlic; Ginger
+Vegetable Stir Fry 23|Broccoli; Carrot; Bell Pepper; Soy Sauce; Garlic
+Beef Stew 23|Beef; Potato; Carrot; Onion; Beef Stock
+Pancakes 23|Flour; Milk; Egg; Sugar; Butter

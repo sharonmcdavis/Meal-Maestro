@@ -39,63 +39,6 @@ def bulk_add_recipe(root):
 
     tk.Button(bulk_add_window, text="Save Recipe", command=save_recipe).pack(pady=10)
 
-
-# Function to add a recipe
-def add_recipe(root):
-    # Create a new window for adding a recipe
-    def save_recipe():
-        name = name_entry.get()
-        if name and ingredients_list:
-            try:
-                conn = sqlite3.connect('recipe_database.db')
-                cursor = conn.cursor()
-                # Combine ingredients into a single string
-                ingredients = ', '.join(ingredients_list)
-                cursor.execute('''
-                    INSERT INTO recipes (name, ingredients)
-                    VALUES (?, ?)
-                ''', (name, ingredients))
-                conn.commit()
-                conn.close()
-                messagebox.showinfo("Success", "Recipe added successfully!")
-                add_recipe_window.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to add recipe: {e}")
-        else:
-            messagebox.showerror("Error", "Please fill in all fields.")
-
-    def add_ingredient():
-        ingredient = ingredient_entry.get()
-        if ingredient:
-            ingredients_list.append(ingredient)
-            ingredient_entry.delete(0, tk.END)
-            ingredients_display.config(text="\n".join(ingredients_list))
-        else:
-            messagebox.showerror("Error", "Please enter an ingredient.")
-
-    # Initialize ingredient list
-    ingredients_list = []
-
-    add_recipe_window = tk.Toplevel(root)
-    add_recipe_window.title("Add Recipe")
-    add_recipe_window.geometry("400x300")
-
-    tk.Label(add_recipe_window, text="Recipe Name:").pack(pady=5)
-    name_entry = tk.Entry(add_recipe_window, width=30)
-    name_entry.pack(pady=5)
-
-    tk.Label(add_recipe_window, text="Ingredient:").pack(pady=5)
-    ingredient_entry = tk.Entry(add_recipe_window, width=30)
-    ingredient_entry.pack(pady=5)
-
-    tk.Button(add_recipe_window, text="Add Ingredient", command=add_ingredient).pack(pady=5)
-
-    tk.Label(add_recipe_window, text="Ingredients List:").pack(pady=5)
-    ingredients_display = tk.Label(add_recipe_window, text="", justify="left")
-    ingredients_display.pack(pady=5)
-
-    tk.Button(add_recipe_window, text="Save Recipe", command=save_recipe).pack(pady=10)
-
 def view_recipe(root):
     def show_recipe_details(selected_recipe):
         try:
@@ -157,6 +100,55 @@ def view_recipe(root):
 
     recipe_ingredients_label = tk.Label(view_recipe_window, text="Ingredients:", font=("Arial", 10), justify="left", wraplength=350)
     recipe_ingredients_label.pack(pady=10)
+
+def delete_recipe(root):
+    # Create a new window for deleting a recipe
+    delete_recipe_window = tk.Toplevel(root)
+    delete_recipe_window.title("Delete Recipe")
+    delete_recipe_window.geometry("400x300")
+
+    tk.Label(delete_recipe_window, text="Select a Recipe to Delete:", font=("Arial", 12)).pack(pady=10)
+
+    # Fetch all recipe names from the database
+    conn = sqlite3.connect('recipe_database.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT name FROM recipes')
+    recipe_names = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    # Handle empty recipe list
+    if not recipe_names:
+        recipe_names = ["No Recipes Available"]
+
+    # Dropdown menu for selecting a recipe
+    selected_recipe = tk.StringVar(delete_recipe_window)
+    selected_recipe.set(recipe_names[0])  # Set the default value
+    recipe_dropdown = tk.OptionMenu(delete_recipe_window, selected_recipe, *recipe_names)
+    recipe_dropdown.pack(pady=10)
+
+    def confirm_delete():
+        recipe_to_delete = selected_recipe.get()
+        if recipe_to_delete != "No Recipes Available":
+            try:
+                conn = sqlite3.connect('recipe_database.db')
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM recipes WHERE name = ?', (recipe_to_delete,))
+                conn.commit()
+                conn.close()
+                messagebox.showinfo("Success", f"Recipe '{recipe_to_delete}' deleted successfully!")
+                delete_recipe_window.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete recipe: {e}")
+        else:
+            messagebox.showerror("Error", "No recipe selected to delete.")
+
+    # Add a button to confirm deletion
+    delete_button = tk.Button(delete_recipe_window, text="Delete Recipe", command=confirm_delete)
+    delete_button.pack(pady=10)
+
+    # Add a button to close the window
+    close_button = tk.Button(delete_recipe_window, text="Cancel", command=delete_recipe_window.destroy)
+    close_button.pack(pady=10)
 
 def edit_recipe(root):
     def save_edited_recipe(selected_recipe, new_name, new_ingredients):

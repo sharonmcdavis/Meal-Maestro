@@ -5,4 +5,7 @@ recipes_dump.txt
 shopping_list.txt
 
 # Ignore Python cache files
-src/__pycache__/git add .
+src/__pycache__/
+
+# Ignore Python cache files
+src/build/
