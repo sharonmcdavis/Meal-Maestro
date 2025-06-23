@@ -2,42 +2,77 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import sqlite3
 
-def bulk_add_recipe(root):
+def add_recipe(root):
+    # Create a new window for adding a recipe
+    add_recipe_window = tk.Toplevel(root)
+    add_recipe_window.title("Add Recipe")
+    add_recipe_window.geometry("400x400")
+
+    # Recipe Name Input
+    tk.Label(add_recipe_window, text="Recipe Name:").pack(pady=5)
+    name_entry = tk.Entry(add_recipe_window, width=30)
+    name_entry.pack(pady=5)
+
+    # Ingredients Input
+    tk.Label(add_recipe_window, text="Ingredients (quantity | description, one per line):").pack(pady=5)
+    ingredients_text = tk.Text(add_recipe_window, width=40, height=10)
+    ingredients_text.pack(pady=5)
+
     def save_recipe():
-        name = name_entry.get()
-        ingredients = ingredients_text.get("1.0", tk.END).strip()  # Get ingredients from the text area
+        name = name_entry.get().strip()
+        ingredients = ingredients_text.get("1.0", tk.END).strip()
+
         if name and ingredients:
+            conn = None  # Initialize connection
             try:
                 conn = sqlite3.connect('recipe_database.db')
                 cursor = conn.cursor()
+
+                # Ensure tables exist
                 cursor.execute('''
-                    INSERT INTO recipes (name, ingredients)
-                    VALUES (?, ?)
-                ''', (name, ingredients))
+                    CREATE TABLE IF NOT EXISTS recipes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL UNIQUE
+                    )
+                ''')
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS ingredients (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        recipe_id INTEGER NOT NULL,
+                        quantity TEXT,
+                        ingredient_description TEXT NOT NULL,
+                        FOREIGN KEY (recipe_id) REFERENCES recipes (id)
+                    )
+                ''')
+
+                # Insert recipe into the database
+                cursor.execute('INSERT INTO recipes (name) VALUES (?)', (name,))
+                recipe_id = cursor.lastrowid
+
+                # Insert ingredients into the database
+                for line in ingredients.splitlines():
+                    if line.strip():
+                        parts = line.split('|')
+                        quantity = parts[0].strip() if len(parts) > 1 else None
+                        description = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, ingredient_description) VALUES (?, ?, ?)',
+                                    (recipe_id, quantity, description))
+
                 conn.commit()
-                conn.close()
                 messagebox.showinfo("Success", "Recipe added successfully!")
-                bulk_add_window.destroy()
+                add_recipe_window.destroy()
             except sqlite3.IntegrityError:
                 messagebox.showerror("Error", "Recipe name must be unique.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to add recipe: {e}")
+            finally:
+                if conn:
+                    conn.close()  # Ensure connection is closed
         else:
             messagebox.showerror("Error", "Please fill in all fields.")
 
-    bulk_add_window = tk.Toplevel(root)
-    bulk_add_window.title("Bulk Add Recipe")
-    bulk_add_window.geometry("400x400")
-
-    tk.Label(bulk_add_window, text="Recipe Name:").pack(pady=5)
-    name_entry = tk.Entry(bulk_add_window, width=30)
-    name_entry.pack(pady=5)
-
-    tk.Label(bulk_add_window, text="Ingredients (one per line):").pack(pady=5)
-    ingredients_text = tk.Text(bulk_add_window, width=40, height=10)
-    ingredients_text.pack(pady=5)
-
-    tk.Button(bulk_add_window, text="Save Recipe", command=save_recipe).pack(pady=10)
+    # Submit Button
+    tk.Button(add_recipe_window, text="Submit", command=save_recipe).pack(pady=10)
 
 def view_recipe(root):
     def show_recipe_details(selected_recipe):
@@ -46,19 +81,25 @@ def view_recipe(root):
             cursor = conn.cursor()
             
             # Fetch the selected recipe details
-            cursor.execute('SELECT name, ingredients FROM recipes WHERE name = ?', (selected_recipe,))
+            cursor.execute('SELECT id, name FROM recipes WHERE name = ?', (selected_recipe,))
             recipe_data = cursor.fetchone()
             
             if not recipe_data:
                 messagebox.showerror("Error", "Recipe not found.")
                 return
             
-            recipe_name = recipe_data[0]
-            recipe_ingredients = recipe_data[1]
-            
+            recipe_id = recipe_data[0]
+            recipe_name = recipe_data[1]
+
+            # Fetch ingredients for the recipe
+            cursor.execute('SELECT quantity, ingredient_description FROM ingredients WHERE recipe_id = ?', (recipe_id,))
+            ingredients = cursor.fetchall()
+
             # Update the labels with the recipe details
             recipe_name_label.config(text=f"Recipe Name: {recipe_name}")
-            recipe_ingredients_label.config(text=f"Ingredients:\n{recipe_ingredients}")
+            recipe_ingredients_label.config(text="Ingredients:\n" + "\n".join(
+                [f"{quantity or ''} {description}" for quantity, description in ingredients]
+            ))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to fetch recipe details: {e}")
         finally:
@@ -67,7 +108,7 @@ def view_recipe(root):
     # Create a new window for selecting and viewing a recipe
     view_recipe_window = tk.Toplevel(root)
     view_recipe_window.title("View Recipe")
-    view_recipe_window.geometry("400x900")
+    view_recipe_window.geometry("400x400")
 
     tk.Label(view_recipe_window, text="Select a Recipe:").pack(pady=10)
 
@@ -91,14 +132,11 @@ def view_recipe(root):
     # Button to fetch and display the recipe details
     tk.Button(view_recipe_window, text="View Recipe", command=lambda: show_recipe_details(selected_recipe.get())).pack(pady=10)
 
-    recipe_name_label = tk.Label(view_recipe_window, text="----------------------------------------------------------", font=("Arial", 14))
-    recipe_name_label.pack(pady=10)
-
     # Labels to display the recipe details
     recipe_name_label = tk.Label(view_recipe_window, text="Recipe Name: ", font=("Arial", 14))
     recipe_name_label.pack(pady=10)
 
-    recipe_ingredients_label = tk.Label(view_recipe_window, text="Ingredients:", font=("Arial", 10), justify="left", wraplength=350)
+    recipe_ingredients_label = tk.Label(view_recipe_window, text="Ingredients:", font=("Arial", 12), justify="left", wraplength=350)
     recipe_ingredients_label.pack(pady=10)
 
 def delete_recipe(root):

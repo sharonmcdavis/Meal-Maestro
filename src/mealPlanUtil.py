@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import sqlite3
+from collections import defaultdict
 
 # Function to create a meal plan
 def create_meal_plan(root):
@@ -74,21 +75,24 @@ def generate_shopping_list(root):
             meal_plan_title = meal_plan_data[0]  # Get the meal plan title
             recipe_ids = meal_plan_data[1].split(', ')  # Split comma-separated recipe IDs
             
-            shopping_list = []
+            grouped_ingredients = defaultdict(list)
             recipe_titles = []
 
             # Fetch recipe names and ingredients
             for recipe_id in recipe_ids:
-                cursor.execute('SELECT name, ingredients FROM recipes WHERE id = ?', (recipe_id,))
+                cursor.execute('SELECT name FROM recipes WHERE id = ?', (recipe_id,))
                 recipe_data = cursor.fetchone()
                 if recipe_data:
                     recipe_name = recipe_data[0]
                     recipe_titles.append(recipe_name)  # Add recipe name to recipe titles
-                    ingredients = recipe_data[1].split('\n')  # Split ingredients into individual lines
-                    for ingredient in ingredients:
-                        if ingredient.strip():  # Skip empty lines
-                            shopping_list.append(f"{ingredient.strip()} ({recipe_name})")
-            
+
+                    # Fetch ingredients for the recipe
+                    cursor.execute('SELECT quantity, ingredient_description FROM ingredients WHERE recipe_id = ?', (recipe_id,))
+                    ingredients = cursor.fetchall()
+                    for quantity, description in ingredients:
+                        normalized_ingredient = description.strip().lower()  # Normalize ingredient name
+                        grouped_ingredients[normalized_ingredient].append((quantity, recipe_name))
+
             # Write shopping list to a text file
             with open("shopping_list.txt", "w") as file:
                 file.write(f"Meal Plan Title: {meal_plan_title}\n")
@@ -96,15 +100,17 @@ def generate_shopping_list(root):
                 for recipe in recipe_titles:
                     file.write(f"- {recipe}\n")
                 file.write("\nShopping List:\n")
-                for item in shopping_list:
-                    file.write(f"{item}\n")
-            
+                for ingredient, details in grouped_ingredients.items():
+                    quantities_and_recipes = ", ".join([f"{quantity or ''} ({recipe})" for quantity, recipe in details])
+                    file.write(f"{ingredient}: {quantities_and_recipes}\n")
+
             messagebox.showinfo("Success", "Shopping list generated successfully!")
             select_meal_plan_window.destroy()  # Close the window after success
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate shopping list: {e}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     # Create a new window for selecting the meal plan
     select_meal_plan_window = tk.Toplevel(root)
@@ -128,4 +134,3 @@ def generate_shopping_list(root):
 
     # Button to generate the shopping list
     tk.Button(select_meal_plan_window, text="Generate Shopping List", command=lambda: save_shopping_list(selected_meal_plan.get())).pack(pady=10)
-    

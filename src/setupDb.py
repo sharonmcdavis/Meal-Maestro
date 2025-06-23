@@ -8,8 +8,17 @@ def setup_database():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS recipes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            ingredients TEXT NOT NULL
+            name TEXT NOT NULL UNIQUE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ingredients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL,
+            quantity TEXT,
+            ingredient_description TEXT NOT NULL,
+            FOREIGN KEY (recipe_id) REFERENCES recipes (id)
         )
     ''')
     

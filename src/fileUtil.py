@@ -6,42 +6,62 @@ import sqlite3
 
 def load_recipes_from_file():
     try:
-        # Determine the correct path for recipes_load.txt
-        if getattr(sys, 'frozen', False):  # Check if running as an executable
-            base_path = sys._MEIPASS  # Path to the temporary directory for bundled files
-        else:
-            base_path = os.path.dirname(__file__)  # Path to the script directory
+        # Prompt user to select the file
+        file_path = filedialog.askopenfilename(
+            title="Select Recipe File",
+            filetypes=(("Text Files", "*.txt"), ("All Files", "*.*"))
+        )
+        if not file_path:
+            messagebox.showerror("Error", "No file selected.")
+            return
 
-        file_path = os.path.join(base_path, "recipes_load.txt")
-
-        # Load recipes from the file
         conn = sqlite3.connect('recipe_database.db')
         cursor = conn.cursor()
+
+        # Ensure tables exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS recipes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                ingredients TEXT NOT NULL
+                name TEXT NOT NULL UNIQUE
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ingredients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recipe_id INTEGER NOT NULL,
+                quantity TEXT,
+                ingredient_description TEXT NOT NULL,
+                FOREIGN KEY (recipe_id) REFERENCES recipes (id)
+            )
+        ''')
+
+        # Read and parse the file
         with open(file_path, 'r') as file:
             for line in file:
                 parts = line.strip().split('|')
                 if len(parts) == 2:
-                    name = parts[0].strip()
-                    ingredients = parts[1].strip().replace(';', '\n')  # Replace semi-colons with newlines
-                    try:
-                        cursor.execute('''
-                            INSERT INTO recipes (name, ingredients)
-                            VALUES (?, ?)
-                        ''', (name, ingredients))
-                    except sqlite3.IntegrityError:
-                        print(f"Duplicate recipe name: {name}")
+                    recipe_name = parts[0].strip()
+                    ingredients = parts[1].strip().split(';')
+                    
+                    # Insert recipe into the database
+                    cursor.execute('INSERT OR IGNORE INTO recipes (name) VALUES (?)', (recipe_name,))
+                    recipe_id = cursor.lastrowid
+
+                    # Insert ingredients into the database
+                    for ingredient in ingredients:
+                        ingredient_parts = ingredient.strip().split(' ', 1)
+                        quantity = ingredient_parts[0].strip() if len(ingredient_parts) > 1 else None
+                        description = ingredient_parts[1].strip() if len(ingredient_parts) > 1 else ingredient_parts[0].strip()
+                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, ingredient_description) VALUES (?, ?, ?)',
+                                       (recipe_id, quantity, description))
+                else:
+                    print(f"Invalid line format: {line.strip()}")
+
         conn.commit()
         conn.close()
-        print("Recipes loaded successfully!")
+        messagebox.showinfo("Success", "Recipes loaded successfully!")
     except Exception as e:
-        print(f"Failed to load recipes: {e}")
+        messagebox.showerror("Error", f"Failed to load recipes: {e}")
 
 def dump_recipes_to_file():
     try:
