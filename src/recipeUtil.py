@@ -1,20 +1,18 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import sqlite3
+from constants import MEASUREMENTS, parse_ingredient
 
 def add_recipe(root):
-    # Create a new window for adding a recipe
     add_recipe_window = tk.Toplevel(root)
     add_recipe_window.title("Add Recipe")
     add_recipe_window.geometry("400x400")
 
-    # Recipe Name Input
     tk.Label(add_recipe_window, text="Recipe Name:").pack(pady=5)
     name_entry = tk.Entry(add_recipe_window, width=30)
     name_entry.pack(pady=5)
 
-    # Ingredients Input
-    tk.Label(add_recipe_window, text="Ingredients (quantity | description, one per line):").pack(pady=5)
+    tk.Label(add_recipe_window, text="Ingredients (quantity | measurement | description, one per line):").pack(pady=5)
     ingredients_text = tk.Text(add_recipe_window, width=40, height=10)
     ingredients_text.pack(pady=5)
 
@@ -23,40 +21,19 @@ def add_recipe(root):
         ingredients = ingredients_text.get("1.0", tk.END).strip()
 
         if name and ingredients:
-            conn = None  # Initialize connection
+            conn = None
             try:
-                conn = sqlite3.connect('recipe_database.db')
+                conn = sqlite3.connect('mealMaestro_data.db')
                 cursor = conn.cursor()
 
-                # Ensure tables exist
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS recipes (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT NOT NULL UNIQUE
-                    )
-                ''')
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS ingredients (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        recipe_id INTEGER NOT NULL,
-                        quantity TEXT,
-                        ingredient_description TEXT NOT NULL,
-                        FOREIGN KEY (recipe_id) REFERENCES recipes (id)
-                    )
-                ''')
-
-                # Insert recipe into the database
                 cursor.execute('INSERT INTO recipes (name) VALUES (?)', (name,))
                 recipe_id = cursor.lastrowid
 
-                # Insert ingredients into the database
                 for line in ingredients.splitlines():
                     if line.strip():
-                        parts = line.split('|')
-                        quantity = parts[0].strip() if len(parts) > 1 else None
-                        description = parts[1].strip() if len(parts) > 1 else parts[0].strip()
-                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, ingredient_description) VALUES (?, ?, ?)',
-                                    (recipe_id, quantity, description))
+                        quantity, measurement, description = parse_ingredient(line)
+                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, measurement, ingredient_description) VALUES (?, ?, ?, ?)',
+                                       (recipe_id, quantity, measurement, description))
 
                 conn.commit()
                 messagebox.showinfo("Success", "Recipe added successfully!")
@@ -67,17 +44,16 @@ def add_recipe(root):
                 messagebox.showerror("Error", f"Failed to add recipe: {e}")
             finally:
                 if conn:
-                    conn.close()  # Ensure connection is closed
+                    conn.close()
         else:
             messagebox.showerror("Error", "Please fill in all fields.")
 
-    # Submit Button
     tk.Button(add_recipe_window, text="Submit", command=save_recipe).pack(pady=10)
 
 def view_recipe(root):
     def show_recipe_details(selected_recipe):
         try:
-            conn = sqlite3.connect('recipe_database.db')
+            conn = sqlite3.connect('mealMaestro_data.db')
             cursor = conn.cursor()
             
             # Fetch the selected recipe details
@@ -113,7 +89,7 @@ def view_recipe(root):
     tk.Label(view_recipe_window, text="Select a Recipe:").pack(pady=10)
 
     # Fetch all recipe names from the database
-    conn = sqlite3.connect('recipe_database.db')
+    conn = sqlite3.connect('mealMaestro_data.db')
     cursor = conn.cursor()
     cursor.execute('SELECT name FROM recipes')
     recipe_names = [row[0] for row in cursor.fetchall()]
@@ -148,7 +124,7 @@ def delete_recipe(root):
     tk.Label(delete_recipe_window, text="Select a Recipe to Delete:", font=("Arial", 12)).pack(pady=10)
 
     # Fetch all recipe names from the database
-    conn = sqlite3.connect('recipe_database.db')
+    conn = sqlite3.connect('mealMaestro_data.db')
     cursor = conn.cursor()
     cursor.execute('SELECT name FROM recipes')
     recipe_names = [row[0] for row in cursor.fetchall()]
@@ -168,7 +144,7 @@ def delete_recipe(root):
         recipe_to_delete = selected_recipe.get()
         if recipe_to_delete != "No Recipes Available":
             try:
-                conn = sqlite3.connect('recipe_database.db')
+                conn = sqlite3.connect('mealMaestro_data.db')
                 cursor = conn.cursor()
                 cursor.execute('DELETE FROM recipes WHERE name = ?', (recipe_to_delete,))
                 conn.commit()
@@ -191,14 +167,29 @@ def delete_recipe(root):
 def edit_recipe(root):
     def save_edited_recipe(selected_recipe, new_name, new_ingredients):
         try:
-            conn = sqlite3.connect('recipe_database.db')
+            conn = sqlite3.connect('mealMaestro_data.db')
             cursor = conn.cursor()
-            
-            # Update the recipe in the database
-            cursor.execute('UPDATE recipes SET name = ?, ingredients = ? WHERE name = ?', (new_name, new_ingredients, selected_recipe))
+
+            # Update the recipe name in the database
+            cursor.execute('UPDATE recipes SET name = ? WHERE name = ?', (new_name, selected_recipe))
+
+            # Fetch the recipe ID for the updated recipe
+            cursor.execute('SELECT id FROM recipes WHERE name = ?', (new_name,))
+            recipe_id = cursor.fetchone()[0]
+
+            # Delete old ingredients for the recipe
+            cursor.execute('DELETE FROM ingredients WHERE recipe_id = ?', (recipe_id,))
+
+            # Insert updated ingredients into the database
+            for line in new_ingredients.splitlines():
+                if line.strip():
+                    quantity, measurement, description = parse_ingredient(line)
+                    cursor.execute('INSERT INTO ingredients (recipe_id, quantity, measurement, ingredient_description) VALUES (?, ?, ?, ?)',
+                                   (recipe_id, quantity, measurement, description))
+
             conn.commit()
             conn.close()
-            
+
             messagebox.showinfo("Success", "Recipe updated successfully!")
             edit_recipe_window.destroy()  # Close the edit window after success
         except Exception as e:
@@ -206,23 +197,32 @@ def edit_recipe(root):
 
     def load_existing_ingredients(selected_recipe):
         try:
-            conn = sqlite3.connect('recipe_database.db')
+            conn = sqlite3.connect('mealMaestro_data.db')
             cursor = conn.cursor()
-            
-            # Fetch the existing ingredients for the selected recipe
-            cursor.execute('SELECT ingredients FROM recipes WHERE name = ?', (selected_recipe,))
+
+            # Fetch the recipe ID for the selected recipe
+            cursor.execute('SELECT id FROM recipes WHERE name = ?', (selected_recipe,))
             recipe_data = cursor.fetchone()
-            conn.close()
-            
-            if recipe_data:
-                ingredients_text.delete("1.0", tk.END)  # Clear the text area
-                ingredients_text.insert(tk.END, recipe_data[0])  # Insert existing ingredients
-                
-                # Default the current recipe name into the "New Recipe Name" entry box
-                new_name_entry.delete(0, tk.END)  # Clear the entry box
-                new_name_entry.insert(0, selected_recipe)  # Insert the selected recipe name
-            else:
+
+            if not recipe_data:
                 messagebox.showerror("Error", "Recipe not found.")
+                return
+
+            recipe_id = recipe_data[0]
+
+            # Fetch existing ingredients for the recipe
+            cursor.execute('SELECT quantity, measurement, ingredient_description FROM ingredients WHERE recipe_id = ?', (recipe_id,))
+            ingredients = cursor.fetchall()
+            conn.close()
+
+            # Populate the ingredients text area with the existing ingredients
+            ingredients_text.delete("1.0", tk.END)  # Clear the text area
+            for quantity, measurement, description in ingredients:
+                ingredients_text.insert(tk.END, f"{quantity or ''} {measurement or ''} {description}\n")
+
+            # Default the current recipe name into the "New Recipe Name" entry box
+            new_name_entry.delete(0, tk.END)  # Clear the entry box
+            new_name_entry.insert(0, selected_recipe)  # Insert the selected recipe name
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load ingredients: {e}")
 
@@ -234,7 +234,7 @@ def edit_recipe(root):
     tk.Label(edit_recipe_window, text="Select a Recipe:").pack(pady=10)
 
     # Fetch all recipe names from the database
-    conn = sqlite3.connect('recipe_database.db')
+    conn = sqlite3.connect('mealMaestro_data.db')
     cursor = conn.cursor()
     cursor.execute('SELECT name FROM recipes')
     recipe_names = [row[0] for row in cursor.fetchall()]
@@ -257,7 +257,7 @@ def edit_recipe(root):
     new_name_entry = tk.Entry(edit_recipe_window, width=30)
     new_name_entry.pack(pady=5)
 
-    tk.Label(edit_recipe_window, text="Ingredients (one per line):").pack(pady=5)
+    tk.Label(edit_recipe_window, text="Ingredients (quantity | measurement | description, one per line):").pack(pady=5)
     ingredients_text = tk.Text(edit_recipe_window, width=40, height=10)
     ingredients_text.pack(pady=5)
 

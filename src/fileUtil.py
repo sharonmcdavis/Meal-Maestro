@@ -3,10 +3,10 @@ from tkinter import filedialog, messagebox
 import os
 import sys
 import sqlite3
+from constants import MEASUREMENTS, parse_ingredient
 
 def load_recipes_from_file():
     try:
-        # Prompt user to select the file
         file_path = filedialog.askopenfilename(
             title="Select Recipe File",
             filetypes=(("Text Files", "*.txt"), ("All Files", "*.*"))
@@ -15,7 +15,7 @@ def load_recipes_from_file():
             messagebox.showerror("Error", "No file selected.")
             return
 
-        conn = sqlite3.connect('recipe_database.db')
+        conn = sqlite3.connect('mealMaestro_data.db')
         cursor = conn.cursor()
 
         # Ensure tables exist
@@ -30,6 +30,7 @@ def load_recipes_from_file():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 recipe_id INTEGER NOT NULL,
                 quantity TEXT,
+                measurement TEXT,
                 ingredient_description TEXT NOT NULL,
                 FOREIGN KEY (recipe_id) REFERENCES recipes (id)
             )
@@ -42,18 +43,16 @@ def load_recipes_from_file():
                 if len(parts) == 2:
                     recipe_name = parts[0].strip()
                     ingredients = parts[1].strip().split(';')
-                    
+
                     # Insert recipe into the database
                     cursor.execute('INSERT OR IGNORE INTO recipes (name) VALUES (?)', (recipe_name,))
                     recipe_id = cursor.lastrowid
 
                     # Insert ingredients into the database
                     for ingredient in ingredients:
-                        ingredient_parts = ingredient.strip().split(' ', 1)
-                        quantity = ingredient_parts[0].strip() if len(ingredient_parts) > 1 else None
-                        description = ingredient_parts[1].strip() if len(ingredient_parts) > 1 else ingredient_parts[0].strip()
-                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, ingredient_description) VALUES (?, ?, ?)',
-                                       (recipe_id, quantity, description))
+                        quantity, measurement, description = parse_ingredient(ingredient)
+                        cursor.execute('INSERT INTO ingredients (recipe_id, quantity, measurement, ingredient_description) VALUES (?, ?, ?, ?)',
+                                       (recipe_id, quantity, measurement, description))
                 else:
                     print(f"Invalid line format: {line.strip()}")
 
@@ -74,7 +73,7 @@ def dump_recipes_to_file():
         file_path = os.path.join(base_path, "recipes_dump.txt")
 
         # Fetch all recipes from the database
-        conn = sqlite3.connect('recipe_database.db')
+        conn = sqlite3.connect('mealMaestro_data.db')
         cursor = conn.cursor()
         cursor.execute('SELECT name, ingredients FROM recipes')
         recipes = cursor.fetchall()

@@ -1,7 +1,7 @@
 import sqlite3
 
 def delete_all_tables():
-    conn = sqlite3.connect('recipe_database.db')
+    conn = sqlite3.connect('mealMaestro_data.db')
     cursor = conn.cursor()
     
     # Drop all tables

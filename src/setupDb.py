@@ -1,7 +1,7 @@
 import sqlite3
 
 def setup_database():
-    conn = sqlite3.connect('recipe_database.db')
+    conn = sqlite3.connect('mealMaestro_data.db')
     cursor = conn.cursor()
     
     # Create recipes table
@@ -17,6 +17,7 @@ def setup_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             recipe_id INTEGER NOT NULL,
             quantity TEXT,
+            measurement TEXT,
             ingredient_description TEXT NOT NULL,
             FOREIGN KEY (recipe_id) REFERENCES recipes (id)
         )
