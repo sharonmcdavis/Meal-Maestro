@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox
 import sqlite3
 from collections import defaultdict
 from constants import MEASUREMENTS, parse_ingredient
+import xlwt  # Import xlwt for writing Excel files
 
 # Function to create a meal plan
 def create_meal_plan(root):
@@ -59,40 +60,58 @@ def create_meal_plan(root):
     tk.Button(create_meal_plan_window, text="Save Meal Plan", command=save_meal_plan).pack(pady=10)
 
 def generate_shopping_list(root):
-    conn = None  # Initialize connection variable
     try:
+        # Connect to the database
         conn = sqlite3.connect('mealMaestro_data.db')
         cursor = conn.cursor()
 
-        # Fetch all meal plan titles from the database
-        cursor.execute('SELECT title FROM meal_plans')
-        meal_plan_titles = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        # Fetch meal plans and recipes
+        cursor.execute("SELECT title, recipe_ids FROM meal_plans")
+        meal_plans = cursor.fetchall()
 
-        if not meal_plan_titles:
-            messagebox.showerror("Error", "No meal plans available.")
+        if not meal_plans:
+            messagebox.showerror("Error", "No meal plans found.")
             return
 
-        # Create a new window for selecting the meal plan
-        select_meal_plan_window = tk.Toplevel(root)
-        select_meal_plan_window.title("Select Meal Plan")
-        select_meal_plan_window.geometry("400x200")
+        # Create a workbook and add a sheet
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet("Shopping List")
 
-        tk.Label(select_meal_plan_window, text="Select a Meal Plan:").pack(pady=10)
+        # Write headers
+        sheet.write(0, 0, "Ingredient")
+        sheet.write(0, 1, "Quantity")
+        sheet.write(0, 2, "Measurement")
+        sheet.write(0, 3, "Recipe Name")
 
-        # Dropdown menu for selecting a meal plan
-        selected_meal_plan = tk.StringVar(select_meal_plan_window)
-        selected_meal_plan.set(meal_plan_titles[0])  # Set the default value
-        meal_plan_dropdown = tk.OptionMenu(select_meal_plan_window, selected_meal_plan, *meal_plan_titles)
-        meal_plan_dropdown.pack(pady=10)
+        row = 1  # Start writing data from row 1
 
-        # Button to generate the shopping list
-        tk.Button(select_meal_plan_window, text="Generate Shopping List", command=lambda: generate_shopping_list_for_plan(selected_meal_plan.get(), root)).pack(pady=10)
+        for meal_plan in meal_plans:
+            meal_plan_title = meal_plan[0]
+            recipe_ids = meal_plan[1].split(", ")
+
+            for recipe_id in recipe_ids:
+                cursor.execute("SELECT name FROM recipes WHERE id = ?", (recipe_id,))
+                recipe = cursor.fetchone()
+
+                if recipe:
+                    recipe_name = recipe[0]
+                    cursor.execute("SELECT ingredient_description, quantity, measurement FROM ingredients WHERE recipe_id = ?", (recipe_id,))
+                    ingredients = cursor.fetchall()
+
+                    for ingredient_description, quantity, measurement in ingredients:
+                        sheet.write(row, 0, ingredient_description)
+                        sheet.write(row, 1, quantity)
+                        sheet.write(row, 2, measurement)
+                        sheet.write(row, 3, recipe_name)
+                        row += 1
+
+        # Save the workbook as an .xls file
+        workbook.save("shopping_list.xls")
+        messagebox.showinfo("Success", "Shopping list saved as shopping_list.xls")
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to fetch meal plans: {e}")
+        messagebox.showerror("Error", f"Failed to generate shopping list: {e}")
     finally:
-        if conn:
-            conn.close()
+        conn.close()
 
 
 def generate_shopping_list_for_plan(selected_meal_plan, root):

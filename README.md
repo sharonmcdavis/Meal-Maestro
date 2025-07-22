@@ -18,6 +18,7 @@ Meal Maestro is a Python-based recipe management application that allows users t
    pip install -r requirements.txt
 
 ### Requirements
+### pip install xlwt
 - pyinstaller
 
 

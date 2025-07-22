@@ -6,8 +6,10 @@ def delete_all_tables():
     
     # Drop all tables
     cursor.execute('DROP TABLE IF EXISTS recipes')
+    cursor.execute('DROP TABLE IF EXISTS ingredients')
     cursor.execute('DROP TABLE IF EXISTS meal_plans')
     cursor.execute('DROP TABLE IF EXISTS shopping_lists')
+    cursor.execute('DROP TABLE IF EXISTS ingredient_dict')
     
     conn.commit()
     conn.close()
