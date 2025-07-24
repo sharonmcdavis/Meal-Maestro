@@ -1,9 +1,13 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox
 import sqlite3
 from collections import defaultdict
 from constants import MEASUREMENTS, parse_ingredient
 import xlwt  # Import xlwt for writing Excel files
+from recipeUtil import auto_resize_popup
+from openpyxl import load_workbook  # Import load_workbook to read Excel files
+from fractions import Fraction  # Import Fraction to handle fractional quantities
+from openpyxl import Workbook  # Import Workbook to create Excel files
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
 # Function to create a meal plan
 def create_meal_plan(root):
@@ -60,126 +64,203 @@ def create_meal_plan(root):
     tk.Button(create_meal_plan_window, text="Save Meal Plan", command=save_meal_plan).pack(pady=10)
 
 def generate_shopping_list(root):
+    # Create a popup window for selecting a meal plan
+    shopping_list_window = tk.Toplevel(root)
+    shopping_list_window.title("Generate Shopping List")
+    shopping_list_window.geometry("400x200")
+
+    # Fetch meal plans from the database
+    conn = sqlite3.connect('mealMaestro_data.db')
+    cursor = conn.cursor()
     try:
-        # Connect to the database
-        conn = sqlite3.connect('mealMaestro_data.db')
-        cursor = conn.cursor()
-
-        # Fetch meal plans and recipes
-        cursor.execute("SELECT title, recipe_ids FROM meal_plans")
-        meal_plans = cursor.fetchall()
-
-        if not meal_plans:
-            messagebox.showerror("Error", "No meal plans found.")
-            return
-
-        # Create a workbook and add a sheet
-        workbook = xlwt.Workbook()
-        sheet = workbook.add_sheet("Shopping List")
-
-        # Write headers
-        sheet.write(0, 0, "Ingredient")
-        sheet.write(0, 1, "Quantity")
-        sheet.write(0, 2, "Measurement")
-        sheet.write(0, 3, "Recipe Name")
-
-        row = 1  # Start writing data from row 1
-
-        for meal_plan in meal_plans:
-            meal_plan_title = meal_plan[0]
-            recipe_ids = meal_plan[1].split(", ")
-
-            for recipe_id in recipe_ids:
-                cursor.execute("SELECT name FROM recipes WHERE id = ?", (recipe_id,))
-                recipe = cursor.fetchone()
-
-                if recipe:
-                    recipe_name = recipe[0]
-                    cursor.execute("SELECT ingredient_description, quantity, measurement FROM ingredients WHERE recipe_id = ?", (recipe_id,))
-                    ingredients = cursor.fetchall()
-
-                    for ingredient_description, quantity, measurement in ingredients:
-                        sheet.write(row, 0, ingredient_description)
-                        sheet.write(row, 1, quantity)
-                        sheet.write(row, 2, measurement)
-                        sheet.write(row, 3, recipe_name)
-                        row += 1
-
-        # Save the workbook as an .xls file
-        workbook.save("shopping_list.xls")
-        messagebox.showinfo("Success", "Shopping list saved as shopping_list.xls")
+        cursor.execute("SELECT id, title FROM meal_plans")
+        meal_plans = cursor.fetchall()  # List of (id, title)
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to generate shopping list: {e}")
+        messagebox.showerror("Error", f"Failed to fetch meal plans: {e}")
+        return
     finally:
         conn.close()
 
+    # If no meal plans are available, show an error
+    if not meal_plans:
+        messagebox.showerror("Error", "No meal plans available.")
+        return
 
-def generate_shopping_list_for_plan(selected_meal_plan, root):
-    conn = None  # Initialize connection variable
-    try:
+    # Dropdown to select a meal plan
+    tk.Label(shopping_list_window, text="Select a Meal Plan:").pack(pady=10)
+    selected_meal_plan = tk.StringVar(shopping_list_window)
+    selected_meal_plan.set(meal_plans[0][1])  # Set the first meal plan as default
+
+    dropdown = tk.OptionMenu(shopping_list_window, selected_meal_plan, *[plan[1] for plan in meal_plans])
+    dropdown.pack(pady=5)
+
+    def save_shopping_list():
+        meal_plan_title = selected_meal_plan.get()
+
+        # Fetch recipes associated with the selected meal plan
         conn = sqlite3.connect('mealMaestro_data.db')
         cursor = conn.cursor()
-
-        # Fetch the selected meal plan
-        cursor.execute('SELECT title, recipe_ids FROM meal_plans WHERE title = ?', (selected_meal_plan,))
-        meal_plan_data = cursor.fetchone()
-
-        if not meal_plan_data:
-            messagebox.showerror("Error", "Meal plan not found.")
+        try:
+            cursor.execute('''
+                SELECT recipe_ids
+                FROM meal_plans
+                WHERE title = ?
+            ''', (meal_plan_title,))
+            result = cursor.fetchone()
+            if result:
+                recipe_ids = result[0].split(",")  # Recipe IDs are stored as a comma-separated string
+            else:
+                recipe_ids = []
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch recipes for the meal plan: {e}")
             return
-
-        meal_plan_title = meal_plan_data[0]  # Get the meal plan title
-        recipe_ids = meal_plan_data[1].split(', ')  # Split comma-separated recipe IDs
-
-        grouped_ingredients = defaultdict(list)
-        recipe_titles = []
-
-        # Fetch recipe names and ingredients
-        for recipe_id in recipe_ids:
-            cursor.execute('SELECT name FROM recipes WHERE id = ?', (recipe_id,))
-            recipe_data = cursor.fetchone()
-            if recipe_data:
-                recipe_name = recipe_data[0]
-                recipe_titles.append(recipe_name)  # Add recipe name to recipe titles
-
-                # Fetch ingredients for the recipe
-                cursor.execute('SELECT quantity, measurement, ingredient_description FROM ingredients WHERE recipe_id = ?', (recipe_id,))
-                ingredients = cursor.fetchall()
-                for quantity, measurement, description in ingredients:
-                    normalized_ingredient = description.strip().lower()  # Normalize ingredient name
-                    grouped_ingredients[normalized_ingredient].append((quantity, measurement, recipe_name))
-
-        # Aggregate grouped ingredients
-        aggregated_ingredients = defaultdict(list)
-        for ingredient, details in grouped_ingredients.items():
-            for quantity, measurement, recipe in details:
-                aggregated_ingredients[ingredient].append((quantity, measurement, recipe))
-
-        # Write shopping list to a text file
-        with open("shopping_list.txt", "w") as file:
-            file.write(f"Meal Plan Title: {meal_plan_title}\n")
-            file.write(f"-----------------------\n")
-            file.write("Recipes Included:\n")
-            for recipe in recipe_titles:
-                file.write(f"- {recipe}\n")
-            file.write(f"\n************************************************\n")
-            file.write("\nShopping List:\n")
-            file.write(f"-------------------------\n")
-            for ingredient, details in aggregated_ingredients.items():
-                quantities_and_recipes = ", ".join([f"{quantity or ''} {measurement or ''} ({recipe})" for quantity, measurement, recipe in details])
-                file.write(f"{ingredient}: {quantities_and_recipes}\n")
-
-        messagebox.showinfo("Success", "Shopping list generated successfully!")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to generate shopping list: {e}")
-    finally:
-        if conn:
+        finally:
             conn.close()
 
+        # Fetch ingredients for the selected recipes, including recipe names
+        conn = sqlite3.connect('mealMaestro_data.db')
+        cursor = conn.cursor()
+        try:
+            ingredients = []
+            for recipe_id in recipe_ids:
+                cursor.execute('''
+                    SELECT r.name AS recipe_name, 
+                        i.ingredient_description AS ingredient, 
+                        SUM(CAST(i.quantity AS REAL)) AS total_quantity, 
+                        i.measurement
+                    FROM ingredients i
+                    JOIN recipes r ON i.recipe_id = r.id
+                    WHERE i.recipe_id = ?
+                    GROUP BY r.name, i.ingredient_description, i.measurement
+                ''', (recipe_id,))
+                ingredients.extend(cursor.fetchall())
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch ingredients: {e}")
+            return
+        finally:
+            conn.close()
 
-    # Fetch all meal plan titles from the database
-    conn = sqlite3.connect('mealMaestro_data.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT title FROM meal_plans')
-    meal_plan_titles = [row[0] for row in cursor.fetchall()]
-    conn.close()
+        # # Prompt the user to save the shopping list as an Excel file
+        # file_path = filedialog.asksaveasfilename(
+        #     title="Save Shopping List",
+        #     defaultextension=".xlsx",
+        #     filetypes=[("Excel Files", "*.xlsx")]
+        # )
+        # if not file_path:
+        #     messagebox.showerror("Error", "No file selected for saving.")
+        #     return
+
+        # Load the ingredient dictionary from ingredient_dict.xlsx
+        ingredient_dict = {}
+        try:
+            ingredient_workbook = load_workbook("ingredient_dict.xlsx")
+            ingredient_sheet = ingredient_workbook.active
+            for row in ingredient_sheet.iter_rows(min_row=2, values_only=True):  # Skip the header row
+                if row[0] and row[1]:  # Ensure both key and value exist
+                    ingredient_dict[row[0].strip().lower()] = row[1].strip()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load ingredient dictionary: {e}")
+            return
+
+        # Load the store dictionary from store_lookup.xlsx
+        store_dict = {}
+        try:
+            store_workbook = load_workbook("store_lookup.xlsx")
+            store_sheet = store_workbook.active
+            for row in store_sheet.iter_rows(min_row=2, values_only=True):  # Skip the header row
+                if row[0] and row[1]:  # Ensure both key and value exist
+                    store_dict[row[0].strip().lower()] = row[1].strip()
+            print("DEBUG: Store dictionary loaded successfully.")
+        except Exception as e:
+            print(f"DEBUG: Failed to load store dictionary: {e}")
+            messagebox.showerror("Error", f"Failed to load store dictionary: {e}")
+            return
+
+        # Create the Excel file
+        try:
+            from fractions import Fraction  # Import Fraction to handle fractional quantities
+
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Shopping List"
+
+ 
+            # Write headers
+            sheet.append(["Recipe Name", "Ingredient", "Total Quantity", "Measurement", "Generic Ingredient", "Store"])
+
+            # Load the store_lookup.xlsx file and use it for both the generic ingredient dictionary and store lookup
+            generic_ingredient_dict = {}  # Dictionary to map ingredient descriptions to generic ingredients
+            store_dict = {}  # Dictionary to map generic ingredients to stores
+            try:
+                store_workbook = load_workbook("store_lookup.xlsx")
+                store_sheet = store_workbook.active
+                for row in store_sheet.iter_rows(min_row=2, values_only=True):  # Skip the header row
+                    if row[0] and row[1]:  # Ensure both columns have values
+                        generic_ingredient = row[0].strip().lower()
+                        store = row[1].strip()
+                        generic_ingredient_dict[generic_ingredient] = generic_ingredient  # Map generic ingredient to itself
+                        store_dict[generic_ingredient] = store  # Map generic ingredient to store
+                print("DEBUG: Loaded store_lookup.xlsx successfully.")
+            except Exception as e:
+                print(f"DEBUG: Failed to load store_lookup.xlsx: {e}")
+                messagebox.showerror("Error", f"Failed to load store_lookup.xlsx: {e}")
+                return
+
+            # Write ingredients to the Excel file
+            for recipe_name, ingredient, quantity, measurement in ingredients:
+                try:
+                    if quantity is None:  # Handle None values
+                        total_quantity = ""
+                    else:
+                        # Ensure quantity is treated as a string
+                        quantity_str = str(quantity).strip()
+
+                        if "to" in quantity_str:  # Handle ranges like "1/4 to 1/2" or "1/4 to 2"
+                            parts = quantity_str.split("to")
+                            total_quantity = sum(float(Fraction(part.strip())) for part in parts) / len(parts)
+                        elif " " in quantity_str:  # Handle mixed fractions like "1 1/2"
+                            parts = quantity_str.split(" ")
+                            total_quantity = float(parts[0]) + float(Fraction(parts[1]))
+                        else:  # Handle single fractions like "1/2"
+                            total_quantity = float(Fraction(quantity_str))
+                except (ValueError, ZeroDivisionError):
+                    total_quantity = quantity  # Keep as-is if parsing fails
+
+                # Find the generic ingredient from the dictionary
+                generic_ingredient = ""
+                for key in generic_ingredient_dict.keys():
+                    #print(f"DEBUG: Checking if '{key}' is in ingredient '{ingredient.lower()}'.")  # Debug output for each dictionary key
+                    if key in ingredient.lower():  # Check if the dictionary key exists in the ingredient description
+                        #print(f"DEBUG: Found match for '{key}' in ingredient '{ingredient}'. Generic ingredient: '{key}'")
+                        generic_ingredient = key
+                        break
+                else:
+                    print(f"DEBUG: No match found for ingredient '{ingredient}' in the dictionary.")  # Debug output for no match
+
+                # Lookup the store for the generic ingredient
+                store = ""
+                if generic_ingredient:
+                    store = store_dict.get(generic_ingredient, "")  # Lookup the store in the store dictionary
+                    if store:
+                        print(f"DEBUG: Found store '{store}' for generic ingredient '{generic_ingredient}'")
+                    else:
+                        print(f"DEBUG: No store found for generic ingredient '{generic_ingredient}'")
+
+                # Append the processed ingredient to the Excel sheet
+                sheet.append([recipe_name, ingredient, total_quantity or "", measurement or "", generic_ingredient, store])
+
+            # Save the Excel file
+            file_path = "shopping_list.xlsx"
+            try:
+                workbook.save(file_path)
+                messagebox.showinfo("Success", f"Shopping list saved to {file_path}.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save shopping list: {e}")
+            shopping_list_window.destroy()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save shopping list: {e}")
+
+    # Submit button to generate and save the shopping list
+    submit_button = tk.Button(shopping_list_window, text="Generate Shopping List", command=save_shopping_list)
+    submit_button.pack(pady=10)
